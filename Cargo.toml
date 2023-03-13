@@ -4,10 +4,10 @@ version = "0.1.0"
 authors = ["Samuel Garcés <samuel.garces@protonmail.com>"]
 license = "MIT"
 description = "uSIEM log enricher"
-repository = "https://github.com/u-siem/usiem-elasticsearch"
+repository = "https://github.com/u-siem/usiem-enricher"
 keywords = ["SIEM", "security", "logs"]
 categories = ["parsing"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "usiem_enricher"

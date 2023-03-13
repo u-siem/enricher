@@ -1,18 +1,16 @@
 use std::borrow::Cow;
 
 use usiem::components::command::{CommandDefinition, SiemCommandCall, SiemFunctionType};
-use usiem::components::common::{
-    SiemComponentCapabilities, SiemMessage, UserRole,
-};
+use usiem::components::common::{SiemComponentCapabilities, SiemMessage, UserRole};
 use usiem::components::dataset::holder::DatasetHolder;
 use usiem::components::enrichment::LogEnrichment;
 use usiem::components::SiemComponent;
 use usiem::crossbeam_channel;
 use usiem::crossbeam_channel::{Receiver, Sender, TryRecvError};
 use usiem::events::SiemLog;
-use usiem::prelude::SiemResult;
 use usiem::prelude::kernel_message::KernelMessager;
 use usiem::prelude::storage::SiemComponentStateStorage;
+use usiem::prelude::SiemResult;
 
 pub struct LogEnricher {
     id: u64,
@@ -175,7 +173,7 @@ impl LogEnricher {
             id: 0,
             enrichers: vec![],
             datasets: DatasetHolder::new(),
-            kernel_sender : KernelMessager::new(0, format!("DummyKernel"), kernel_sender),
+            kernel_sender: KernelMessager::new(0, format!("DummyKernel"), kernel_sender),
             local_chnl_rcv,
             local_chnl_snd,
             log_sender,
@@ -199,7 +197,7 @@ mod elastic_test {
     use usiem::components::SiemComponent;
     use usiem::crossbeam_channel;
     use usiem::events::field::{SiemField, SiemIp};
-    use usiem::events::{SiemLog};
+    use usiem::events::SiemLog;
     use usiem::prelude::holder::DatasetHolder;
     use usiem::utilities::types::LogString;
 
@@ -216,35 +214,30 @@ mod elastic_test {
     struct MacEnricher {}
 
     impl LogEnrichment for MacEnricher {
-        fn enrich(
-            &self,
-            mut log: SiemLog,
-            datasets: &usiem::components::dataset::holder::DatasetHolder,
-        ) -> SiemLog {
+        fn enrich(&self, mut log: SiemLog, datasets: &DatasetHolder) -> SiemLog {
             let mut fields_to_add = vec![];
+            let mac_dataset : &IpMapSynDataset = match datasets.get(&SiemDatasetType::IpMac) {
+                Some(dst) => match dst.try_into() {
+                    Ok(v) => v,
+                    Err(_) => return log
+                },
+                None => return log
+            };
+            
             for (name, field) in log.fields() {
                 if let SiemField::IP(ip) = field {
-                    let ip_mac = match datasets.get(&SiemDatasetType::IpMac) {
-                        Some(ip_mac) => match ip_mac {
-                            SiemDataset::IpMac(ip_mac) => ip_mac,
-                            _ => {
-                                continue;
-                            }
-                        },
-                        None => {
-                            continue;
-                        }
-                    };
-                    match ip_mac.get(ip) {
+                    match mac_dataset.get(ip) {
                         Some(val) => {
-                            let field_base_name = field_name(name);
-                            fields_to_add.push((format!("{}.mac", field_base_name),SiemField::Text(val.clone())));
+                            fields_to_add.push((
+                                format!("{}.mac", field_name(name)),
+                                SiemField::Text(val.clone()),
+                            ));
                         }
                         None => {}
                     }
                 }
             }
-            for (name,val) in fields_to_add {
+            for (name, val) in fields_to_add {
                 log.insert(LogString::Owned(name), val);
             }
             log
@@ -271,7 +264,9 @@ mod elastic_test {
         dataset.insert(SiemIp::V4(100), "SuperData");
 
         let (comm, _) = crossbeam_channel::bounded(1);
-        let datasets = DatasetHolder::from_datasets(vec![SiemDataset::IpMac(IpMapSynDataset::new(Arc::new(dataset), comm))]);
+        let datasets = DatasetHolder::from_datasets(vec![SiemDataset::IpMac(
+            IpMapSynDataset::new(Arc::new(dataset), comm),
+        )]);
         enricher.set_datasets(datasets);
 
         let mac_enricher = MacEnricher {};
@@ -285,7 +280,10 @@ mod elastic_test {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let log = receiver.try_recv().expect("Should receive a message");
         assert!(log.has_field("source.mac"));
-        assert_eq!(log.field("source.mac"), Some(&SiemField::from_str("SuperData")));
+        assert_eq!(
+            log.field("source.mac"),
+            Some(&SiemField::from_str("SuperData"))
+        );
 
         std::thread::spawn(move || {
             local_channel.send(SiemMessage::Command(
