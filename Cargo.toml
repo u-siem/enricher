@@ -1,6 +1,6 @@
 [package]
 name = "u-siem-enricher"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Samuel Garcés <samuel.garces@protonmail.com>"]
 license = "MIT"
 description = "uSIEM log enricher"
@@ -14,4 +14,4 @@ name = "usiem_enricher"
 path = "src/lib.rs"
 
 [dependencies]
-u-siem = {version = "0.0"}
+u-siem = {version = "0"}

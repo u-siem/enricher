@@ -2,20 +2,22 @@ use std::borrow::Cow;
 
 use usiem::components::command::{CommandDefinition, SiemCommandCall, SiemFunctionType};
 use usiem::components::common::{
-    SiemComponentCapabilities, SiemComponentStateStorage, SiemMessage, UserRole,
+    SiemComponentCapabilities, SiemMessage, UserRole,
 };
 use usiem::components::dataset::holder::DatasetHolder;
-use usiem::components::dataset::SiemDataset;
 use usiem::components::enrichment::LogEnrichment;
 use usiem::components::SiemComponent;
 use usiem::crossbeam_channel;
 use usiem::crossbeam_channel::{Receiver, Sender, TryRecvError};
 use usiem::events::SiemLog;
+use usiem::prelude::SiemResult;
+use usiem::prelude::kernel_message::KernelMessager;
+use usiem::prelude::storage::SiemComponentStateStorage;
 
 pub struct LogEnricher {
     id: u64,
     /// Send messages to the kernel
-    kernel_sender: Sender<SiemMessage>,
+    kernel_sender: KernelMessager,
     /// Receive actions from other components or the kernel
     local_chnl_rcv: Receiver<SiemMessage>,
     /// Send actions to this components
@@ -42,11 +44,11 @@ impl SiemComponent for LogEnricher {
         self.log_receiver = receiver;
     }
 
-    fn set_kernel_sender(&mut self, sender: Sender<SiemMessage>) {
+    fn set_kernel_sender(&mut self, sender: KernelMessager) {
         self.kernel_sender = sender;
     }
 
-    fn run(&mut self) {
+    fn run(&mut self) -> SiemResult<()> {
         let receiver = self.local_chnl_rcv.clone();
         let log_receiver = self.log_receiver.clone();
 
@@ -57,8 +59,8 @@ impl SiemComponent for LogEnricher {
                 Ok(msg) => match msg {
                     SiemMessage::Command(_hdr, cmd) => match cmd {
                         SiemCommandCall::STOP_COMPONENT(_n) => {
-                            println!("Closing LogEnricher");
-                            return;
+                            usiem::info!("Closing LogEnricher");
+                            return Ok(());
                         }
                         _ => {}
                     },
@@ -78,14 +80,14 @@ impl SiemComponent for LogEnricher {
                         }
                     }
                     SiemMessage::Dataset(dataset) => {
-                        datasets.add(dataset);
+                        datasets.insert(dataset);
                     }
                     _ => {}
                 },
                 Err(e) => match e {
                     TryRecvError::Empty => {}
                     TryRecvError::Disconnected => {
-                        return;
+                        return Ok(());
                     }
                 },
             };
@@ -111,7 +113,7 @@ impl SiemComponent for LogEnricher {
                         std::thread::sleep(std::time::Duration::from_millis(10));
                         continue;
                     }
-                    TryRecvError::Disconnected => return,
+                    TryRecvError::Disconnected => return Ok(()),
                 },
             }
         }
@@ -136,7 +138,7 @@ impl SiemComponent for LogEnricher {
         ];
         SiemComponentCapabilities::new(
             Cow::Borrowed("LogEnricher"),
-            Cow::Borrowed("ENrich logs with information extracted from datasets"),
+            Cow::Borrowed("Enrich logs with information extracted from datasets"),
             Cow::Borrowed(""),
             vec![],
             commands,
@@ -159,10 +161,8 @@ impl SiemComponent for LogEnricher {
         })
     }
 
-    fn set_datasets(&mut self, datasets: Vec<SiemDataset>) {
-        for dataset in datasets {
-            self.datasets.add(dataset);
-        }
+    fn set_datasets(&mut self, datasets: DatasetHolder) {
+        self.datasets = datasets;
     }
 }
 
@@ -175,7 +175,7 @@ impl LogEnricher {
             id: 0,
             enrichers: vec![],
             datasets: DatasetHolder::new(),
-            kernel_sender,
+            kernel_sender : KernelMessager::new(0, format!("DummyKernel"), kernel_sender),
             local_chnl_rcv,
             local_chnl_snd,
             log_sender,
@@ -200,6 +200,8 @@ mod elastic_test {
     use usiem::crossbeam_channel;
     use usiem::events::field::{SiemField, SiemIp};
     use usiem::events::{SiemLog};
+    use usiem::prelude::holder::DatasetHolder;
+    use usiem::utilities::types::LogString;
 
     use crate::LogEnricher;
 
@@ -243,7 +245,7 @@ mod elastic_test {
                 }
             }
             for (name,val) in fields_to_add {
-                log.add_field(&name, val);
+                log.insert(LogString::Owned(name), val);
             }
             log
         }
@@ -269,9 +271,8 @@ mod elastic_test {
         dataset.insert(SiemIp::V4(100), "SuperData");
 
         let (comm, _) = crossbeam_channel::bounded(1);
-        let dataset = SiemDataset::IpMac(IpMapSynDataset::new(Arc::new(dataset), comm));
-
-        enricher.set_datasets(vec![dataset]);
+        let datasets = DatasetHolder::from_datasets(vec![SiemDataset::IpMac(IpMapSynDataset::new(Arc::new(dataset), comm))]);
+        enricher.set_datasets(datasets);
 
         let mac_enricher = MacEnricher {};
         enricher.add_enricher(Box::new(mac_enricher));
