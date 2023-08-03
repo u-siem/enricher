@@ -19,6 +19,6 @@ path = "src/lib.rs"
 
 [dependencies]
 coarsetime = "0.1.23"
-#u-siem = {version = "0"}
+u-siem = {version = "0"}
 # Only for developing
-u-siem = {path = "../u-siem-core"}
+#u-siem = {path = "../u-siem-core"}
