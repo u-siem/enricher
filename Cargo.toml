@@ -1,6 +1,6 @@
 [package]
 name = "u-siem-enricher"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Samuel Garcés <samuel.garces@protonmail.com>"]
 license = "MIT"
 description = "uSIEM log enricher"
@@ -9,9 +9,16 @@ keywords = ["SIEM", "security", "logs"]
 categories = ["parsing"]
 edition = "2021"
 
+[features]
+default = ["metrics"]
+metrics = []
+
 [lib]
 name = "usiem_enricher"
 path = "src/lib.rs"
 
 [dependencies]
-u-siem = {version = "0"}
+coarsetime = "0.1.23"
+#u-siem = {version = "0"}
+# Only for developing
+u-siem = {path = "../u-siem-core"}
